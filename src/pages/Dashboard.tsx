@@ -787,7 +787,7 @@ export default function Dashboard() {
                                           
                                           <TabsContent value="tags" className="m-0 space-y-6">
                                             <div className="flex flex-wrap gap-2">
-                                              {activeScript.tags.map((tag, i) => (
+                                              {Array.isArray(activeScript.tags) && activeScript.tags.map((tag, i) => (
                                                 <span key={i} className="bg-primary/10 text-primary px-4 py-2 rounded-xl text-sm font-bold border border-primary/10">
                                                   {tag.startsWith('#') ? tag : `#${tag}`}
                                                 </span>
@@ -1112,7 +1112,7 @@ export default function Dashboard() {
                                         
                                         <TabsContent value="tags" className="m-0 space-y-6">
                                           <div className="flex flex-wrap gap-2">
-                                            {activeScript.tags.map((tag, i) => (
+                                            {Array.isArray(activeScript.tags) && activeScript.tags.map((tag, i) => (
                                               <span key={i} className="bg-primary/10 text-primary px-4 py-2 rounded-xl text-sm font-bold border border-primary/10">
                                                 {tag.startsWith('#') ? tag : `#${tag}`}
                                               </span>

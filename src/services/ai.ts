@@ -131,8 +131,7 @@ export async function getTrendingNiches(customApiKey?: string): Promise<Trending
         
         return [];
       } catch (groqError) {
-        console.error("Groq API error:", groqError);
-        throw groqError;
+        console.warn("Groq API error, falling back to Gemini:", groqError);
       }
     }
 
@@ -261,19 +260,23 @@ export async function getPersonalizedNiches(mediaData: any[], customApiKey?: str
   try {
     const groqKey = getGroqApiKey(customApiKey);
     if (groqKey) {
-      console.log("Fetching personalized niches using Groq...");
-      const text = await callGroq(groqKey, prompt, schema);
-      console.log("Groq Personalized Raw Response:", text);
-      const parsed = JSON.parse(text);
-      
-      if (Array.isArray(parsed)) return parsed;
-      if (parsed.niches && Array.isArray(parsed.niches)) return parsed.niches;
-      if (parsed.data && Array.isArray(parsed.data)) return parsed.data;
-      
-      const firstArray = Object.values(parsed).find(val => Array.isArray(val));
-      if (firstArray) return firstArray as TrendingNiche[];
-      
-      return [];
+      try {
+        console.log("Fetching personalized niches using Groq...");
+        const text = await callGroq(groqKey, prompt, schema);
+        console.log("Groq Personalized Raw Response:", text);
+        const parsed = JSON.parse(text);
+        
+        if (Array.isArray(parsed)) return parsed;
+        if (parsed.niches && Array.isArray(parsed.niches)) return parsed.niches;
+        if (parsed.data && Array.isArray(parsed.data)) return parsed.data;
+        
+        const firstArray = Object.values(parsed).find(val => Array.isArray(val));
+        if (firstArray) return firstArray as TrendingNiche[];
+        
+        return [];
+      } catch (groqError) {
+        console.warn("Groq API error, falling back to Gemini:", groqError);
+      }
     }
 
     const aiInstance = customApiKey ? new GoogleGenAI({ apiKey: customApiKey }) : defaultAi;
@@ -384,9 +387,13 @@ export async function generateViralScript(niche: string, platform: string, custo
   try {
     const groqKey = getGroqApiKey(customApiKey);
     if (groqKey) {
-      console.log("Generating viral script using Groq...");
-      const text = await callGroq(groqKey, prompt, schema);
-      return JSON.parse(text);
+      try {
+        console.log("Generating viral script using Groq...");
+        const text = await callGroq(groqKey, prompt, schema);
+        return JSON.parse(text);
+      } catch (e) {
+        console.warn("Groq failed, falling back to Gemini", e);
+      }
     }
 
     const aiInstance = customApiKey ? new GoogleGenAI({ apiKey: customApiKey }) : defaultAi;
