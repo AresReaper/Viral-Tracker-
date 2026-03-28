@@ -1,4 +1,5 @@
 import { GoogleGenAI, Type } from '@google/genai';
+import Groq from 'groq-sdk';
 
 const getAiInstance = (apiKey?: string) => {
   const key = apiKey || (process.env as any).GEMINI_API_KEY;
@@ -10,6 +11,8 @@ const getAiInstance = (apiKey?: string) => {
 };
 
 const defaultAi = getAiInstance();
+
+const isGroqKey = (key: string) => key.startsWith('gsk_');
 
 export interface TrendingNiche {
   id: string;
@@ -41,21 +44,30 @@ export interface ViralScript {
   imagePrompt: string;
 }
 
+async function callGroq(apiKey: string, prompt: string, responseSchema?: any): Promise<string> {
+  const groq = new Groq({ apiKey, dangerouslyAllowBrowser: true });
+  const completion = await groq.chat.completions.create({
+    messages: [
+      {
+        role: "system",
+        content: "You are a world-class social media strategist. Return only valid JSON."
+      },
+      {
+        role: "user",
+        content: prompt + (responseSchema ? `\n\nReturn the response in this JSON format: ${JSON.stringify(responseSchema)}` : "")
+      }
+    ],
+    model: "llama-3.3-70b-versatile",
+    response_format: { type: "json_object" }
+  });
+  return completion.choices[0]?.message?.content || "";
+}
+
 export async function getTrendingNiches(customApiKey?: string): Promise<TrendingNiche[]> {
-  const aiInstance = customApiKey ? new GoogleGenAI({ apiKey: customApiKey }) : defaultAi;
-  if (!aiInstance) {
-    console.error("AI instance not initialized. Check your API key.");
-    return [];
-  }
   const prompt = `
     Act as a world-class social media strategist and trend analyst. 
     Analyze the current digital landscape across Instagram Reels and YouTube Shorts to identify the top 6 high-growth, viral-potential niches.
     
-    Use Google Search to anchor your analysis in real-time data, looking for:
-    - Rapidly rising search queries related to content creation.
-    - New content formats gaining massive traction (e.g., specific editing styles, audio trends).
-    - Underserved but high-engagement communities.
-
     For each niche, provide:
     - A compelling, professional name.
     - Primary platform (instagram, youtube, or both).
@@ -67,7 +79,56 @@ export async function getTrendingNiches(customApiKey?: string): Promise<Trending
     - IMPORTANT: Provide ONLY valid, working URLs to real viral videos or specific search results. NO placeholders.
   `;
 
+  const schema = {
+    type: "array",
+    items: {
+      type: "object",
+      properties: {
+        id: "string",
+        name: "string",
+        platform: "instagram | youtube | both",
+        description: "string",
+        trendScore: "number",
+        reason: "string",
+        source: "string",
+        examples: [
+          { title: "string", description: "string", url: "string" }
+        ]
+      }
+    }
+  };
+
   try {
+    if (customApiKey && isGroqKey(customApiKey)) {
+      console.log("Fetching trending niches using Groq...");
+      try {
+        const text = await callGroq(customApiKey, prompt, schema);
+        console.log("Groq Raw Response:", text);
+        const parsed = JSON.parse(text);
+        
+        // Handle different response formats from Groq
+        if (Array.isArray(parsed)) return parsed;
+        if (parsed.niches && Array.isArray(parsed.niches)) return parsed.niches;
+        if (parsed.data && Array.isArray(parsed.data)) return parsed.data;
+        if (parsed.trendingNiches && Array.isArray(parsed.trendingNiches)) return parsed.trendingNiches;
+        
+        // If it's an object but not an array, try to find any array property
+        const firstArray = Object.values(parsed).find(val => Array.isArray(val));
+        if (firstArray) return firstArray as TrendingNiche[];
+        
+        return [];
+      } catch (groqError) {
+        console.error("Groq API error:", groqError);
+        throw groqError;
+      }
+    }
+
+    const aiInstance = customApiKey ? new GoogleGenAI({ apiKey: customApiKey }) : defaultAi;
+    if (!aiInstance) {
+      console.error("AI instance not initialized. Check your API key.");
+      return [];
+    }
+
     console.log(`Fetching trending niches with search grounding ${customApiKey ? '(using custom API)' : ''}...`);
     const response = await aiInstance.models.generateContent({
       model: 'gemini-3-flash-preview',
@@ -123,6 +184,16 @@ export async function getTrendingNiches(customApiKey?: string): Promise<Trending
 
 export async function validateApiKey(apiKey: string): Promise<boolean> {
   try {
+    if (isGroqKey(apiKey)) {
+      const groq = new Groq({ apiKey, dangerouslyAllowBrowser: true });
+      const completion = await groq.chat.completions.create({
+        messages: [{ role: "user", content: "hi" }],
+        model: "llama-3.3-70b-versatile",
+        max_tokens: 5
+      });
+      return !!completion.choices[0]?.message?.content;
+    }
+
     const ai = new GoogleGenAI({ apiKey });
     // Simple fast check
     const response = await ai.models.generateContent({
@@ -138,11 +209,6 @@ export async function validateApiKey(apiKey: string): Promise<boolean> {
 }
 
 export async function getPersonalizedNiches(mediaData: any[], customApiKey?: string): Promise<TrendingNiche[]> {
-  const aiInstance = customApiKey ? new GoogleGenAI({ apiKey: customApiKey }) : defaultAi;
-  if (!aiInstance) {
-    console.error("AI instance not initialized. Check your API key.");
-    return [];
-  }
   const mediaDescriptions = mediaData.slice(0, 10).map(m => m.caption || 'No caption').join(' | ');
   
   const prompt = `
@@ -151,7 +217,6 @@ export async function getPersonalizedNiches(mediaData: any[], customApiKey?: str
     
     Identify 3 strategic "Pivot Niches" that align with their existing style but leverage current viral trends on Instagram Reels and YouTube Shorts.
     
-    Use Google Search to find real-world validation for these recommendations.
     For each niche, provide:
     - A professional niche title.
     - Platform recommendation (instagram, youtube, or both).
@@ -162,7 +227,48 @@ export async function getPersonalizedNiches(mediaData: any[], customApiKey?: str
     - 2 real-world examples with verified URLs.
   `;
 
+  const schema = {
+    type: "array",
+    items: {
+      type: "object",
+      properties: {
+        id: "string",
+        name: "string",
+        platform: "instagram | youtube | both",
+        description: "string",
+        trendScore: "number",
+        reason: "string",
+        source: "string",
+        examples: [
+          { title: "string", description: "string", url: "string" }
+        ]
+      }
+    }
+  };
+
   try {
+    if (customApiKey && isGroqKey(customApiKey)) {
+      console.log("Fetching personalized niches using Groq...");
+      const text = await callGroq(customApiKey, prompt, schema);
+      console.log("Groq Personalized Raw Response:", text);
+      const parsed = JSON.parse(text);
+      
+      if (Array.isArray(parsed)) return parsed;
+      if (parsed.niches && Array.isArray(parsed.niches)) return parsed.niches;
+      if (parsed.data && Array.isArray(parsed.data)) return parsed.data;
+      
+      const firstArray = Object.values(parsed).find(val => Array.isArray(val));
+      if (firstArray) return firstArray as TrendingNiche[];
+      
+      return [];
+    }
+
+    const aiInstance = customApiKey ? new GoogleGenAI({ apiKey: customApiKey }) : defaultAi;
+    if (!aiInstance) {
+      console.error("AI instance not initialized. Check your API key.");
+      return [];
+    }
+
     console.log(`Fetching personalized niches with search grounding ${customApiKey ? '(using custom API)' : ''}...`);
     const response = await aiInstance.models.generateContent({
       model: 'gemini-3-flash-preview',
@@ -211,12 +317,33 @@ export async function getPersonalizedNiches(mediaData: any[], customApiKey?: str
   }
 }
 
-export async function generateViralScript(niche: string, platform: string, customApiKey?: string): Promise<ViralScript> {
-  const aiInstance = customApiKey ? new GoogleGenAI({ apiKey: customApiKey }) : defaultAi;
-  if (!aiInstance) {
-    console.error("AI instance not initialized. Check your API key.");
-    throw new Error("AI instance not initialized. Check your API key.");
+export async function generateQuickPrompt(theme: string, customApiKey?: string): Promise<string> {
+  const prompt = `Generate a high-quality, cinematic image generation prompt for an AI tool (like Midjourney or DALL-E 3) based on this theme: "${theme}". The prompt should be detailed, descriptive, and optimized for viral video thumbnails.`;
+
+  try {
+    if (customApiKey && isGroqKey(customApiKey)) {
+      console.log("Generating quick prompt using Groq...");
+      return await callGroq(customApiKey, prompt);
+    }
+
+    const aiInstance = customApiKey ? new GoogleGenAI({ apiKey: customApiKey }) : defaultAi;
+    if (!aiInstance) {
+      console.error("AI instance not initialized. Check your API key.");
+      throw new Error("AI instance not initialized. Check your API key.");
+    }
+
+    const response = await aiInstance.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: prompt,
+    });
+    return response.text || "Failed to generate prompt";
+  } catch (e) {
+    console.error("Failed to generate quick prompt", e);
+    throw new Error("Failed to generate prompt");
   }
+}
+
+export async function generateViralScript(niche: string, platform: string, customApiKey?: string): Promise<ViralScript> {
   const prompt = `
     Generate a high-conversion, viral-engineered video blueprint for the "${niche}" niche on ${platform}.
     
@@ -228,7 +355,31 @@ export async function generateViralScript(niche: string, platform: string, custo
     5. A "Cinematic Image Prompt": A highly detailed prompt for AI image generators (Midjourney/DALL-E 3) to create a thumbnail that stops the scroll. Focus on lighting, composition, and emotional impact.
   `;
 
+  const schema = {
+    niche: "string",
+    platform: "string",
+    content: "string",
+    tags: ["string"],
+    tools: [
+      { name: "string", type: "free | paid", url: "string", description: "string" }
+    ],
+    watermarkTips: "string",
+    imagePrompt: "string"
+  };
+
   try {
+    if (customApiKey && isGroqKey(customApiKey)) {
+      console.log("Generating viral script using Groq...");
+      const text = await callGroq(customApiKey, prompt, schema);
+      return JSON.parse(text);
+    }
+
+    const aiInstance = customApiKey ? new GoogleGenAI({ apiKey: customApiKey }) : defaultAi;
+    if (!aiInstance) {
+      console.error("AI instance not initialized. Check your API key.");
+      throw new Error("AI instance not initialized. Check your API key.");
+    }
+
     console.log(`Generating viral script for ${niche} on ${platform} with search grounding ${customApiKey ? '(using custom API)' : ''}...`);
     const response = await aiInstance.models.generateContent({
       model: 'gemini-3.1-pro-preview',

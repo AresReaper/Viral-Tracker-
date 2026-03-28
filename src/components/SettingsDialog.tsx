@@ -120,14 +120,8 @@ export function SettingsDialog() {
 
     setTestingId(id);
     
-    let success = false;
-    if (apiToTest.platform.toLowerCase().includes('gemini')) {
-      success = await validateApiKey(apiToTest.apiKey);
-    } else {
-      // Simulate testing for other platforms
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      success = Math.random() > 0.3;
-    }
+    // Use the unified validateApiKey function which handles both Gemini and Groq
+    const success = await validateApiKey(apiToTest.apiKey);
     
     const updatedApis = customApis.map(api => {
       if (api.id === id) {
@@ -175,7 +169,7 @@ export function SettingsDialog() {
     toast.info('Starting full diagnostic of niche-finding algorithms and API integrations...');
     
     const results = await Promise.all(customApis.map(async (api) => {
-      if (api.platform.toLowerCase().includes('gemini')) {
+      if (api.apiKey) {
         const isValid = await validateApiKey(api.apiKey);
         return { ...api, status: isValid ? 'working' as const : 'failed' as const };
       }

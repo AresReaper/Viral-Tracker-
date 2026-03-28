@@ -1,12 +1,13 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
+import firebaseConfigData from '../firebase-applet-config.json';
 
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || (process.env as any).FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || (process.env as any).FIREBASE_AUTH_DOMAIN || (import.meta.env.VITE_FIREBASE_PROJECT_ID ? `${import.meta.env.VITE_FIREBASE_PROJECT_ID}.firebaseapp.com` : ''),
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || (process.env as any).FIREBASE_PROJECT_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || (process.env as any).FIREBASE_APP_ID,
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || firebaseConfigData.apiKey || (process.env as any).FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || firebaseConfigData.authDomain || (process.env as any).FIREBASE_AUTH_DOMAIN || (import.meta.env.VITE_FIREBASE_PROJECT_ID || firebaseConfigData.projectId ? `${import.meta.env.VITE_FIREBASE_PROJECT_ID || firebaseConfigData.projectId}.firebaseapp.com` : ''),
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || firebaseConfigData.projectId || (process.env as any).FIREBASE_PROJECT_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || firebaseConfigData.appId || (process.env as any).FIREBASE_APP_ID,
 };
 
 const isConfigValid = firebaseConfig.apiKey && firebaseConfig.projectId;
@@ -20,6 +21,6 @@ if (isConfigValid && !firebaseConfig.authDomain) {
 }
 
 const app = isConfigValid ? initializeApp(firebaseConfig) : null;
-export const db = app ? getFirestore(app, import.meta.env.VITE_FIREBASE_DATABASE_ID || (process.env as any).FIREBASE_DATABASE_ID) : (null as any);
+export const db = app ? getFirestore(app, import.meta.env.VITE_FIREBASE_DATABASE_ID || firebaseConfigData.firestoreDatabaseId || (process.env as any).FIREBASE_DATABASE_ID) : (null as any);
 export const auth = app ? getAuth(app) : (null as any);
 export const googleProvider = new GoogleAuthProvider();

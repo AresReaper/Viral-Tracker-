@@ -2,7 +2,7 @@ import { GoogleGenAI } from "@google/genai";
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { getTrendingNiches, getPersonalizedNiches, generateViralScript, TrendingNiche, ViralScript } from '../services/ai';
+import { getTrendingNiches, getPersonalizedNiches, generateViralScript, generateQuickPrompt, TrendingNiche, ViralScript } from '../services/ai';
 import { auth, db } from '../firebase';
 import { collection, addDoc, serverTimestamp, query, where, onSnapshot, orderBy, deleteDoc, doc } from 'firebase/firestore';
 import { Button, buttonVariants } from '../components/ui/button';
@@ -97,14 +97,20 @@ export default function Dashboard() {
   // Set default API key if user has one
   useEffect(() => {
     if (userProfile?.settings?.customApis) {
+      // Find the first working API key
       const workingApi = userProfile.settings.customApis.find(api => api.status === 'working');
-      if (workingApi && selectedApiKey !== workingApi.apiKey) {
-        setSelectedApiKey(workingApi.apiKey);
-      } else if (!workingApi && selectedApiKey) {
+      
+      if (workingApi) {
+        if (selectedApiKey !== workingApi.apiKey) {
+          console.log(`Switching to working custom API: ${workingApi.platform}`);
+          setSelectedApiKey(workingApi.apiKey);
+        }
+      } else if (selectedApiKey !== undefined) {
+        console.log("No working custom API found, switching to default.");
         setSelectedApiKey(undefined);
       }
     }
-  }, [userProfile, selectedApiKey]);
+  }, [userProfile?.settings?.customApis, selectedApiKey]);
 
   const handleTabChange = (newTab: string) => {
     const tabs = ['trends', 'generator', 'analytics', 'saved', 'settings'];
@@ -122,12 +128,8 @@ export default function Dashboard() {
     
     setIsGeneratingQuickPrompt(true);
     try {
-      const ai = new GoogleGenAI({ apiKey: selectedApiKey || process.env.GEMINI_API_KEY });
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: `Generate a high-quality, cinematic image generation prompt for an AI tool (like Midjourney or DALL-E 3) based on this theme: "${quickPromptInput}". The prompt should be detailed, descriptive, and optimized for viral video thumbnails.`,
-      });
-      setQuickPromptResult(response.text || 'Failed to generate prompt');
+      const result = await generateQuickPrompt(quickPromptInput, selectedApiKey);
+      setQuickPromptResult(result);
     } catch (error) {
       console.error(error);
       toast.error('Failed to generate quick prompt');
@@ -234,7 +236,7 @@ export default function Dashboard() {
     } else {
       fetchGeneralNiches();
     }
-  }, [user, isInstagramConnected]);
+  }, [user, isInstagramConnected, selectedApiKey]);
 
   useEffect(() => {
     if (!user) return;
@@ -919,7 +921,7 @@ export default function Dashboard() {
                       <h3 className="text-xl font-bold">No niches found</h3>
                       <p className="text-muted-foreground text-center max-w-sm mt-3 px-6">
                         {selectedApiKey 
-                          ? "We couldn't find any trending niches with your custom API key. Please verify your key is active and has billing enabled in the Google AI Studio console."
+                          ? "We couldn't find any trending niches with your custom API key. Please verify your key is active and has billing enabled in the provider's console (Google AI Studio or Groq)."
                           : "We couldn't find any trending niches matching your criteria. Try adjusting your filters or refreshing."}
                       </p>
                       <Button variant="outline" className="mt-8 rounded-2xl px-8 h-12 font-bold" onClick={() => fetchGeneralNiches()}>
