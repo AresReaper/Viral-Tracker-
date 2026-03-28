@@ -24,6 +24,24 @@
           "enum": ["user", "admin"],
           "description": "The user's role."
         },
+        "settings": {
+          "type": "object",
+          "properties": {
+            "customApis": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": { "type": "string" },
+                  "platform": { "type": "string" },
+                  "apiKey": { "type": "string" },
+                  "status": { "type": "string", "enum": ["untested", "working", "failed"] }
+                },
+                "required": ["id", "platform", "apiKey", "status"]
+              }
+            }
+          }
+        },
         "createdAt": {
           "type": "string",
           "format": "date-time",
@@ -57,12 +75,25 @@
         },
         "tools": {
           "type": "array",
-          "items": { "type": "string" },
-          "description": "Suggested free tools to create the video."
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": { "type": "string" },
+              "type": { "type": "string", "enum": ["free", "paid"] },
+              "url": { "type": "string" },
+              "description": { "type": "string" }
+            },
+            "required": ["name", "type", "url", "description"]
+          },
+          "description": "Suggested tools to create the video."
         },
         "watermarkTips": {
           "type": "string",
           "description": "Tips on removing watermarks from the suggested tools."
+        },
+        "imagePrompt": {
+          "type": "string",
+          "description": "A refined, high-quality image generation prompt for AI image tools."
         },
         "authorId": {
           "type": "string",
@@ -74,7 +105,7 @@
           "description": "The time the script was generated."
         }
       },
-      "required": ["niche", "platform", "content", "tags", "tools", "watermarkTips", "authorId", "createdAt"]
+      "required": ["niche", "platform", "content", "tags", "tools", "watermarkTips", "imagePrompt", "authorId", "createdAt"]
     }
   },
   "firestore": {

@@ -1,6 +1,6 @@
 import { GoogleGenAI, Type } from '@google/genai';
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+const defaultAi = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 export interface TrendingNiche {
   id: string;
@@ -9,6 +9,7 @@ export interface TrendingNiche {
   description: string;
   trendScore: number;
   reason: string;
+  source: string;
   examples: {
     title: string;
     description: string;
@@ -21,160 +22,212 @@ export interface ViralScript {
   platform: string;
   content: string;
   tags: string[];
-  tools: string[];
+  tools: {
+    name: string;
+    type: 'free' | 'paid';
+    url: string;
+    description: string;
+  }[];
   watermarkTips: string;
+  imagePrompt: string;
 }
 
-export async function getTrendingNiches(): Promise<TrendingNiche[]> {
+export async function getTrendingNiches(customApiKey?: string): Promise<TrendingNiche[]> {
+  const aiInstance = customApiKey ? new GoogleGenAI({ apiKey: customApiKey }) : defaultAi;
   const prompt = `
-    Analyze current social media trends and identify the top 6 viral niches right now across Instagram Reels and YouTube Shorts.
+    Act as a world-class social media strategist and trend analyst. 
+    Analyze the current digital landscape across Instagram Reels and YouTube Shorts to identify the top 6 high-growth, viral-potential niches.
+    
+    Use Google Search to anchor your analysis in real-time data, looking for:
+    - Rapidly rising search queries related to content creation.
+    - New content formats gaining massive traction (e.g., specific editing styles, audio trends).
+    - Underserved but high-engagement communities.
+
     For each niche, provide:
-    - A catchy name
-    - The platform it's most viral on (instagram, youtube, or both)
-    - A short description of what the content looks like
-    - A trend score out of 100
-    - The reason why it's trending right now
-    - 2 examples of successful content types or specific viral video ideas within this niche, including a descriptive title, a brief explanation of the video, and a hypothetical or real example URL (e.g., https://instagram.com/reels/... or https://youtube.com/shorts/...)
+    - A compelling, professional name.
+    - Primary platform (instagram, youtube, or both).
+    - A detailed breakdown of the content's visual and auditory signature.
+    - A data-backed Trend Score (0-100) based on velocity and engagement.
+    - A strategic "Why it's viral" analysis (psychological triggers, algorithm favor).
+    - The specific data source or trend indicator.
+    - 2 high-fidelity examples of successful content.
+    - IMPORTANT: Provide ONLY valid, working URLs to real viral videos or specific search results. NO placeholders.
   `;
 
-  const response = await ai.models.generateContent({
-    model: 'gemini-3-flash-preview',
-    contents: prompt,
-    config: {
-      responseMimeType: 'application/json',
-      responseSchema: {
-        type: Type.ARRAY,
-        items: {
-          type: Type.OBJECT,
-          properties: {
-            id: { type: Type.STRING, description: "A unique slug for the niche" },
-            name: { type: Type.STRING },
-            platform: { type: Type.STRING, enum: ['instagram', 'youtube', 'both'] },
-            description: { type: Type.STRING },
-            trendScore: { type: Type.NUMBER },
-            reason: { type: Type.STRING },
-            examples: {
-              type: Type.ARRAY,
-              items: {
-                type: Type.OBJECT,
-                properties: {
-                  title: { type: Type.STRING },
-                  description: { type: Type.STRING },
-                  url: { type: Type.STRING }
-                },
-                required: ["title", "description", "url"]
+  try {
+    console.log(`Fetching trending niches with search grounding ${customApiKey ? '(using custom API)' : ''}...`);
+    const response = await aiInstance.models.generateContent({
+      model: 'gemini-3-flash-preview',
+      contents: prompt,
+      config: {
+        tools: [{ googleSearch: {} }],
+        responseMimeType: 'application/json',
+        responseSchema: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              id: { type: Type.STRING, description: "A unique slug for the niche" },
+              name: { type: Type.STRING },
+              platform: { type: Type.STRING, enum: ['instagram', 'youtube', 'both'] },
+              description: { type: Type.STRING },
+              trendScore: { type: Type.NUMBER },
+              reason: { type: Type.STRING },
+              source: { type: Type.STRING, description: "The API or data source used" },
+              examples: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    title: { type: Type.STRING },
+                    description: { type: Type.STRING },
+                    url: { type: Type.STRING, description: "A valid, working URL to a real video or search result" }
+                  },
+                  required: ["title", "description", "url"]
+                }
               }
-            }
-          },
-          required: ["id", "name", "platform", "description", "trendScore", "reason", "examples"]
+            },
+            required: ["id", "name", "platform", "description", "trendScore", "reason", "source", "examples"]
+          }
         }
       }
-    }
-  });
+    });
 
-  try {
-    return JSON.parse(response.text || '[]');
+    console.log("Gemini Response received:", response.text);
+    const text = response.text || '[]';
+    const cleanedText = text.replace(/^```json\n?/, '').replace(/\n?```$/, '').trim();
+    return JSON.parse(cleanedText);
   } catch (e) {
-    console.error("Failed to parse trending niches", e);
+    console.error("Failed to fetch or parse trending niches", e);
     return [];
   }
 }
 
-export async function getPersonalizedNiches(mediaData: any[]): Promise<TrendingNiche[]> {
+export async function getPersonalizedNiches(mediaData: any[], customApiKey?: string): Promise<TrendingNiche[]> {
+  const aiInstance = customApiKey ? new GoogleGenAI({ apiKey: customApiKey }) : defaultAi;
   const mediaDescriptions = mediaData.slice(0, 10).map(m => m.caption || 'No caption').join(' | ');
   
   const prompt = `
-    Analyze the following recent Instagram post captions from a user:
+    Analyze the following content DNA from a user's recent Instagram posts:
     "${mediaDescriptions}"
     
-    Based on their current content style, identify 3 highly personalized, trending niches they should pivot to or double down on for Instagram Reels and YouTube Shorts.
+    Identify 3 strategic "Pivot Niches" that align with their existing style but leverage current viral trends on Instagram Reels and YouTube Shorts.
+    
+    Use Google Search to find real-world validation for these recommendations.
     For each niche, provide:
-    - A catchy name
-    - The platform it's most viral on (instagram, youtube, or both)
-    - A short description of what the content looks like
-    - A trend score out of 100
-    - The reason why it's trending right now and why it fits their profile
-    - 2 examples of successful content types or specific viral video ideas within this niche, including a descriptive title, a brief explanation of the video, and a hypothetical or real example URL.
+    - A professional niche title.
+    - Platform recommendation (instagram, youtube, or both).
+    - Tactical description of the content execution.
+    - Trend Score (0-100) reflecting current market demand.
+    - Synergy Analysis: Why this fits their specific content DNA and why it's trending.
+    - Data source.
+    - 2 real-world examples with verified URLs.
   `;
 
-  const response = await ai.models.generateContent({
-    model: 'gemini-3-flash-preview',
-    contents: prompt,
-    config: {
-      responseMimeType: 'application/json',
-      responseSchema: {
-        type: Type.ARRAY,
-        items: {
-          type: Type.OBJECT,
-          properties: {
-            id: { type: Type.STRING, description: "A unique slug for the niche" },
-            name: { type: Type.STRING, description: "The name of the niche" },
-            platform: { type: Type.STRING, enum: ["instagram", "youtube", "both"] },
-            description: { type: Type.STRING, description: "Short description of the content" },
-            trendScore: { type: Type.NUMBER, description: "Trend score out of 100" },
-            reason: { type: Type.STRING, description: "Why it's trending and fits their profile" },
-            examples: {
-              type: Type.ARRAY,
-              items: {
-                type: Type.OBJECT,
-                properties: {
-                  title: { type: Type.STRING },
-                  description: { type: Type.STRING },
-                  url: { type: Type.STRING }
-                },
-                required: ["title", "description", "url"]
+  try {
+    console.log(`Fetching personalized niches with search grounding ${customApiKey ? '(using custom API)' : ''}...`);
+    const response = await aiInstance.models.generateContent({
+      model: 'gemini-3-flash-preview',
+      contents: prompt,
+      config: {
+        tools: [{ googleSearch: {} }],
+        responseMimeType: 'application/json',
+        responseSchema: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              id: { type: Type.STRING, description: "A unique slug for the niche" },
+              name: { type: Type.STRING, description: "The name of the niche" },
+              platform: { type: Type.STRING, enum: ["instagram", "youtube", "both"] },
+              description: { type: Type.STRING, description: "Short description of the content" },
+              trendScore: { type: Type.NUMBER, description: "Trend score out of 100" },
+              reason: { type: Type.STRING, description: "Why it's trending and fits their profile" },
+              source: { type: Type.STRING, description: "The API or data source used" },
+              examples: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    title: { type: Type.STRING },
+                    description: { type: Type.STRING },
+                    url: { type: Type.STRING, description: "A valid, working URL to a real video or search result" }
+                  },
+                  required: ["title", "description", "url"]
+                }
               }
-            }
-          },
-          required: ["id", "name", "platform", "description", "trendScore", "reason", "examples"]
+            },
+            required: ["id", "name", "platform", "description", "trendScore", "reason", "source", "examples"]
+          }
         }
       }
-    }
-  });
+    });
 
-  try {
-    return JSON.parse(response.text || '[]');
+    console.log("Gemini Personalized Response received:", response.text);
+    const text = response.text || '[]';
+    const cleanedText = text.replace(/^```json\n?/, '').replace(/\n?```$/, '').trim();
+    return JSON.parse(cleanedText);
   } catch (e) {
-    console.error("Failed to parse personalized niches", e);
+    console.error("Failed to fetch or parse personalized niches", e);
     return [];
   }
 }
 
-export async function generateViralScript(niche: string, platform: string): Promise<ViralScript> {
+export async function generateViralScript(niche: string, platform: string, customApiKey?: string): Promise<ViralScript> {
+  const aiInstance = customApiKey ? new GoogleGenAI({ apiKey: customApiKey }) : defaultAi;
   const prompt = `
-    Create a highly engaging, viral-optimized script for a short-form video (Reel/Short) in the "${niche}" niche for ${platform}.
+    Generate a high-conversion, viral-engineered video blueprint for the "${niche}" niche on ${platform}.
     
-    Include:
-    1. The exact script (hook, body, call to action). Make it punchy and fast-paced.
-    2. A list of 10-15 highly effective tags/hashtags to make it go viral.
-    3. A list of 3-5 free tools or sources where the user can create or edit this video (e.g., CapCut, Canva, specific free stock footage sites).
-    4. If any of these tools have watermarks, provide exact instructions on how to remove them for free or avoid them.
+    Your output must include:
+    1. A "Viral Script" with a high-retention hook (first 3 seconds), a value-packed body, and a strong CTA.
+    2. A "Hashtag Strategy" (10-15 tags) optimized for the current algorithm.
+    3. A "Production Toolkit" of 5-8 tools (mix of free/paid) with verified official URLs.
+    4. "Watermark Mastery": Professional tips on achieving a clean, premium look without visible tool branding.
+    5. A "Cinematic Image Prompt": A highly detailed prompt for AI image generators (Midjourney/DALL-E 3) to create a thumbnail that stops the scroll. Focus on lighting, composition, and emotional impact.
   `;
 
-  const response = await ai.models.generateContent({
-    model: 'gemini-3.1-pro-preview',
-    contents: prompt,
-    config: {
-      responseMimeType: 'application/json',
-      responseSchema: {
-        type: Type.OBJECT,
-        properties: {
-          niche: { type: Type.STRING },
-          platform: { type: Type.STRING },
-          content: { type: Type.STRING, description: "The full script including visual cues and spoken text." },
-          tags: { type: Type.ARRAY, items: { type: Type.STRING } },
-          tools: { type: Type.ARRAY, items: { type: Type.STRING } },
-          watermarkTips: { type: Type.STRING, description: "Detailed tips on removing watermarks from the suggested tools." }
-        },
-        required: ["niche", "platform", "content", "tags", "tools", "watermarkTips"]
-      }
-    }
-  });
-
   try {
-    return JSON.parse(response.text || '{}');
+    console.log(`Generating viral script for ${niche} on ${platform} with search grounding ${customApiKey ? '(using custom API)' : ''}...`);
+    const response = await aiInstance.models.generateContent({
+      model: 'gemini-3.1-pro-preview',
+      contents: prompt,
+      config: {
+        tools: [{ googleSearch: {} }],
+        responseMimeType: 'application/json',
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            niche: { type: Type.STRING },
+            platform: { type: Type.STRING },
+            content: { type: Type.STRING, description: "The full script including visual cues and spoken text." },
+            tags: { type: Type.ARRAY, items: { type: Type.STRING } },
+            tools: { 
+              type: Type.ARRAY, 
+              items: { 
+                type: Type.OBJECT,
+                properties: {
+                  name: { type: Type.STRING },
+                  type: { type: Type.STRING, enum: ['free', 'paid'] },
+                  url: { type: Type.STRING, description: "The verified official website URL for the tool" },
+                  description: { type: Type.STRING }
+                },
+                required: ["name", "type", "url", "description"]
+              } 
+            },
+            watermarkTips: { type: Type.STRING, description: "Detailed tips on removing watermarks from the suggested tools." },
+            imagePrompt: { type: Type.STRING, description: "A refined, high-quality image generation prompt for AI image tools." }
+          },
+          required: ["niche", "platform", "content", "tags", "tools", "watermarkTips", "imagePrompt"]
+        }
+      }
+    });
+
+    console.log("Gemini Script Response received:", response.text);
+    const text = response.text || '{}';
+    const cleanedText = text.replace(/^```json\n?/, '').replace(/\n?```$/, '').trim();
+    return JSON.parse(cleanedText);
   } catch (e) {
-    console.error("Failed to parse viral script", e);
+    console.error("Failed to generate or parse viral script", e);
     throw new Error("Failed to generate script");
   }
 }

@@ -7,9 +7,10 @@ ViralTracker is an AI-powered dashboard designed for content creators to discove
 * **🔥 Trend Tracking**: Discover the hottest niches on Instagram and YouTube with AI-generated trend scores and viral examples.
 * **🤖 AI Script Generation**: Instantly generate punchy, fast-paced video scripts tailored to any trending niche.
 * **#️⃣ Viral Hashtags & Tools**: Get optimized tags, recommended free editing tools (like CapCut/Canva), and watermark removal guides.
-* **📱 Instagram Integration**: Securely connect your Instagram account to let the AI analyze your recent posts and suggest personalized niches that fit your exact style.
+* **📱 Instagram Integration (BETA)**: Securely connect your Instagram account to let the AI analyze your recent posts and suggest personalized niches that fit your exact style.
 * **💾 Save Your Scripts**: Securely log in with Google and save your generated scripts to your personal dashboard.
 * **🎨 Multiple Themes**: Seamlessly switch between Light, Dark, and Dracula themes.
+* **📱 Android APK (Coming Soon)**: App build is currently in progress.
 
 ## 🛠️ Tech Stack
 
@@ -44,3 +45,27 @@ VITE_FIREBASE_PROJECT_ID="your_project_id"
 VITE_FIREBASE_STORAGE_BUCKET="your_storage_bucket"
 VITE_FIREBASE_MESSAGING_SENDER_ID="your_messaging_sender_id"
 VITE_FIREBASE_APP_ID="your_app_id"
+```
+
+### Installation
+
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/yourusername/viral-tracker.git
+   cd viral-tracker
+   ```
+
+2. Install dependencies:
+   ```bash
+   npm install
+   ```
+
+3. Start the development server:
+   ```bash
+   npm run dev
+   ```
+
+4. Open `http://localhost:3000` in your browser.
+
+## 📝 License
+This project is licensed under the MIT License.

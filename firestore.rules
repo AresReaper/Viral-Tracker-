@@ -13,6 +13,8 @@ service cloud.firestore {
     //   - email: string (required)
     //   - photoURL: string (optional)
     //   - role: string (required, 'user' or 'admin')
+    //   - settings: map (optional)
+    //     - customApis: list of maps (optional)
     //   - createdAt: timestamp (required, immutable)
     //
     // Collection: scripts
@@ -22,8 +24,9 @@ service cloud.firestore {
     //   - platform: string (required, 'instagram', 'youtube', 'both')
     //   - content: string (required)
     //   - tags: list of strings (required)
-    //   - tools: list of strings (required)
+    //   - tools: list of maps (required)
     //   - watermarkTips: string (required)
+    //   - imagePrompt: string (required)
     //   - authorId: string (required, immutable)
     //   - createdAt: timestamp (required, immutable)
     //
@@ -67,7 +70,8 @@ service cloud.firestore {
     
     function isAdmin() {
       return isAuthenticated() && 
-        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+        ((exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin') ||
         (request.auth.token.email == "neelrj104@gmail.com" && request.auth.token.email_verified == true));
     }
 
@@ -76,22 +80,29 @@ service cloud.firestore {
     // ===============================================================
 
     function isValidUser(data) {
-      return hasOnlyAllowedFields(['name', 'email', 'photoURL', 'role', 'createdAt']) &&
+      return hasOnlyAllowedFields(['name', 'email', 'photoURL', 'role', 'createdAt', 'settings']) &&
              data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
              data.email is string && isValidEmail(data.email) &&
-             (!('photoURL' in data) || (data.photoURL is string && data.photoURL.size() < 500)) &&
+             (!('photoURL' in data) || (data.photoURL is string && data.photoURL.size() < 1000000)) &&
              data.role in ['user', 'admin'] &&
-             data.createdAt is timestamp;
+             data.createdAt is timestamp &&
+             (!('settings' in data) || (data.settings is map && isValidSettings(data.settings)));
+    }
+
+    function isValidSettings(settings) {
+      return settings.keys().hasOnly(['customApis']) &&
+             (!('customApis' in settings) || (settings.customApis is list && settings.customApis.size() <= 20));
     }
 
     function isValidScript(data) {
-      return hasOnlyAllowedFields(['niche', 'platform', 'content', 'tags', 'tools', 'watermarkTips', 'authorId', 'createdAt']) &&
+      return hasOnlyAllowedFields(['niche', 'platform', 'content', 'tags', 'tools', 'watermarkTips', 'imagePrompt', 'authorId', 'createdAt']) &&
              data.niche is string && data.niche.size() > 0 && data.niche.size() < 200 &&
              data.platform in ['instagram', 'youtube', 'both'] &&
              data.content is string && data.content.size() > 0 && data.content.size() < 10000 &&
              data.tags is list && data.tags.size() <= 50 &&
              data.tools is list && data.tools.size() <= 20 &&
              data.watermarkTips is string && data.watermarkTips.size() < 2000 &&
+             data.imagePrompt is string && data.imagePrompt.size() < 5000 &&
              data.authorId is string && data.authorId.size() > 0 && data.authorId.size() < 50 &&
              data.createdAt is timestamp;
     }

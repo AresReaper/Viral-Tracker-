@@ -3,16 +3,23 @@ import { Navigate } from 'react-router-dom';
 import { Button } from '../components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card';
 import { TrendingUp, Youtube, Instagram } from 'lucide-react';
+import { motion } from 'motion/react';
 
 export default function Login() {
-  const { user, signInWithGoogle } = useAuth();
+  const { user, isGuest, signInWithGoogle, loginAsGuest } = useAuth();
 
-  if (user) {
+  if (user || isGuest) {
     return <Navigate to="/" />;
   }
 
   return (
-    <div className="min-h-screen bg-neutral-50 flex items-center justify-center p-4">
+    <motion.div 
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.3 }}
+      className="min-h-screen bg-neutral-50 flex items-center justify-center p-4"
+    >
       <Card className="w-full max-w-md border-neutral-200 shadow-sm">
         <CardHeader className="text-center space-y-2">
           <div className="mx-auto bg-neutral-900 w-12 h-12 rounded-xl flex items-center justify-center mb-4">
@@ -49,6 +56,14 @@ export default function Login() {
             </svg>
             Continue with Google
           </Button>
+
+          <Button 
+            variant="ghost" 
+            className="w-full h-12 text-base font-medium text-neutral-600 hover:text-neutral-900"
+            onClick={loginAsGuest}
+          >
+            Continue as Guest
+          </Button>
           
           <div className="relative">
             <div className="absolute inset-0 flex items-center">
@@ -74,6 +89,6 @@ export default function Login() {
           </p>
         </CardContent>
       </Card>
-    </div>
+    </motion.div>
   );
 }
