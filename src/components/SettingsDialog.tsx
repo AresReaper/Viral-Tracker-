@@ -162,7 +162,7 @@ export function SettingsDialog() {
                 <div className="flex items-center justify-between">
                   <h3 className="text-sm font-medium">Custom API Integrations</h3>
                   <div className="flex items-center gap-2">
-                    <Button variant="outline" size="sm" render={<a href="https://console.groq.com/keys" target="_blank" rel="noopener noreferrer" />} className="text-xs h-8">
+                    <Button variant="outline" size="sm" nativeButton={false} render={<a href="https://console.groq.com/keys" target="_blank" rel="noopener noreferrer" />} className="text-xs h-8">
                       Get Groq Key
                     </Button>
                     <Button variant="outline" size="sm" onClick={handleAddApi} className="h-8">
