@@ -344,13 +344,13 @@ export default function Dashboard() {
             <div className="bg-primary p-1.5 rounded-lg group-hover:scale-110 transition-transform duration-300">
               <TrendingUp className="w-5 h-5 text-primary-foreground" />
             </div>
-            <span className="font-semibold text-lg tracking-tight group-hover:text-primary transition-colors duration-300">
+            <span className="font-black text-2xl tracking-tight group-hover:text-primary transition-colors duration-300">
               ViralTracker
             </span>
           </div>
           
           {/* Desktop Navigation */}
-          <div className="hidden md:flex items-center space-x-4">
+          <div className="hidden md:flex items-center space-x-2">
             {!isGuest && (
               isInstagramConnected ? (
                 <span className="text-sm text-primary flex items-center bg-primary/10 px-3 py-1.5 rounded-xl font-black border border-primary/30 shadow-sm">
@@ -751,7 +751,7 @@ export default function Dashboard() {
                                           </TabsList>
                                         </div>
                                         
-                                        <ScrollArea className="flex-1 p-6">
+                                        <div className="flex-1 overflow-y-auto p-6">
                                           <TabsContent value="script" className="m-0 space-y-6">
                                             <div className="bg-card p-6 rounded-2xl border shadow-inner font-mono text-sm leading-relaxed whitespace-pre-wrap">
                                               {activeScript.content}
@@ -850,7 +850,7 @@ export default function Dashboard() {
                                               </p>
                                             </div>
                                           </TabsContent>
-                                        </ScrollArea>
+                                        </div>
                                       </Tabs>
                                     </>
                                   ) : (
