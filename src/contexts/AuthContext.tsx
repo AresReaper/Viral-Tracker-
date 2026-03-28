@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { User, onAuthStateChanged, signInWithPopup, signOut } from 'firebase/auth';
 import { doc, getDoc, setDoc, serverTimestamp, onSnapshot } from 'firebase/firestore';
 import { auth, db, googleProvider } from '../firebase';
+import { handleFirestoreError, OperationType } from '../lib/firestore-errors';
 
 interface UserSettings {
   customApis: {
@@ -42,7 +43,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const updateSettings = async (settings: UserSettings) => {
     if (!user) return;
     const userRef = doc(db, 'users', user.uid);
-    await setDoc(userRef, { settings }, { merge: true });
+    try {
+      await setDoc(userRef, { settings }, { merge: true });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, `users/${user.uid}`);
+    }
   };
 
   useEffect(() => {
@@ -68,22 +73,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         localStorage.removeItem('guest_session');
         // Create or update user profile in Firestore
         const userRef = doc(db, 'users', currentUser.uid);
-        const userSnap = await getDoc(userRef);
-        
-        if (!userSnap.exists()) {
-          await setDoc(userRef, {
-            name: currentUser.displayName || 'Anonymous',
-            email: currentUser.email || '',
-            photoURL: '', // Force avatar selection
-            role: 'user',
-            createdAt: serverTimestamp(),
-          });
+        try {
+          const userSnap = await getDoc(userRef);
+          
+          if (!userSnap.exists()) {
+            await setDoc(userRef, {
+              name: currentUser.displayName || 'Anonymous',
+              email: currentUser.email || '',
+              photoURL: '', // Force avatar selection
+              role: 'user',
+              createdAt: serverTimestamp(),
+            });
+          }
+        } catch (error) {
+          handleFirestoreError(error, OperationType.GET, `users/${currentUser.uid}`);
         }
 
         unsubscribeProfile = onSnapshot(userRef, (doc) => {
           if (doc.exists()) {
             setUserProfile(doc.data() as UserProfile);
           }
+        }, (error) => {
+          handleFirestoreError(error, OperationType.GET, `users/${currentUser.uid}`);
         });
       } else {
         setUserProfile(null);

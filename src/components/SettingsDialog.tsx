@@ -3,6 +3,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { db } from '../firebase';
 import { doc, updateDoc } from 'firebase/firestore';
 import { auth } from '../firebase';
+import { handleFirestoreError, OperationType } from '../lib/firestore-errors';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
@@ -11,57 +12,6 @@ import { toast } from 'sonner';
 import { Settings, Plus, Trash2, CheckCircle2, XCircle, Loader2, Play } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { Separator } from './ui/separator';
-
-enum OperationType {
-  CREATE = 'create',
-  UPDATE = 'update',
-  DELETE = 'delete',
-  LIST = 'list',
-  GET = 'get',
-  WRITE = 'write',
-}
-
-interface FirestoreErrorInfo {
-  error: string;
-  operationType: OperationType;
-  path: string | null;
-  authInfo: {
-    userId: string | undefined;
-    email: string | null | undefined;
-    emailVerified: boolean | undefined;
-    isAnonymous: boolean | undefined;
-    tenantId: string | null | undefined;
-    providerInfo: {
-      providerId: string;
-      displayName: string | null;
-      email: string | null;
-      photoUrl: string | null;
-    }[];
-  }
-}
-
-function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
-  const errInfo: FirestoreErrorInfo = {
-    error: error instanceof Error ? error.message : String(error),
-    authInfo: {
-      userId: auth.currentUser?.uid,
-      email: auth.currentUser?.email,
-      emailVerified: auth.currentUser?.emailVerified,
-      isAnonymous: auth.currentUser?.isAnonymous,
-      tenantId: auth.currentUser?.tenantId,
-      providerInfo: auth.currentUser?.providerData.map(provider => ({
-        providerId: provider.providerId,
-        displayName: provider.displayName,
-        email: provider.email,
-        photoUrl: provider.photoURL
-      })) || []
-    },
-    operationType,
-    path
-  }
-  console.error('Firestore Error: ', JSON.stringify(errInfo));
-  throw new Error(JSON.stringify(errInfo));
-}
 
 import { validateApiKey } from '../services/ai';
 
@@ -79,7 +29,7 @@ export function SettingsDialog() {
     if (!user || isGuest) return;
     const newApi = {
       id: Math.random().toString(36).substring(7),
-      platform: 'Gemini',
+      platform: 'Groq',
       apiKey: '',
       status: 'untested' as const,
     };
@@ -211,13 +161,18 @@ export function SettingsDialog() {
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <h3 className="text-sm font-medium">Custom API Integrations</h3>
-                  <Button variant="outline" size="sm" onClick={handleAddApi}>
-                    <Plus className="h-4 w-4 mr-2" />
-                    Add API
-                  </Button>
+                  <div className="flex items-center gap-2">
+                    <Button variant="outline" size="sm" render={<a href="https://console.groq.com/keys" target="_blank" rel="noopener noreferrer" />} className="text-xs h-8">
+                      Get Groq Key
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={handleAddApi} className="h-8">
+                      <Plus className="h-4 w-4 mr-2" />
+                      Add API
+                    </Button>
+                  </div>
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Add your own API keys to integrate with external platforms for niche analysis and sharing.
+                  Add your own API keys to integrate with external platforms. We highly recommend using <strong>Groq</strong> for the fastest and best results.
                 </p>
                 
                 <div className="space-y-3">

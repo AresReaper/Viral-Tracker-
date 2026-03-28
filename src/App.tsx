@@ -9,6 +9,7 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ThemeProvider } from './components/ThemeProvider';
 import { Toaster } from './components/ui/sonner';
 import { AnimatePresence } from 'motion/react';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import About from './pages/About';
@@ -32,6 +33,7 @@ function AnimatedRoutes() {
               <Dashboard />
             </PrivateRoute>
           } 
+          index
         />
       </Routes>
     </AnimatePresence>
@@ -40,13 +42,15 @@ function AnimatedRoutes() {
 
 export default function App() {
   return (
-    <ThemeProvider defaultTheme="light" storageKey="viral-tracker-theme">
-      <AuthProvider>
-        <Router>
-          <AnimatedRoutes />
-        </Router>
-        <Toaster />
-      </AuthProvider>
-    </ThemeProvider>
+    <ErrorBoundary>
+      <ThemeProvider defaultTheme="light" storageKey="viral-tracker-theme">
+        <AuthProvider>
+          <Router>
+            <AnimatedRoutes />
+          </Router>
+          <Toaster />
+        </AuthProvider>
+      </ThemeProvider>
+    </ErrorBoundary>
   );
 }

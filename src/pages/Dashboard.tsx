@@ -6,6 +6,7 @@ import { getTrendingNiches, getPersonalizedNiches, generateViralScript, generate
 import { auth, db } from '../firebase';
 import { collection, addDoc, serverTimestamp, query, where, onSnapshot, orderBy, deleteDoc, doc } from 'firebase/firestore';
 import { Button, buttonVariants } from '../components/ui/button';
+import { handleFirestoreError, OperationType } from '../lib/firestore-errors';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '../components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { ScrollArea } from '../components/ui/scroll-area';
@@ -25,57 +26,6 @@ import { AnalyticsTab } from '../components/AnalyticsTab';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
 
-enum OperationType {
-  CREATE = 'create',
-  UPDATE = 'update',
-  DELETE = 'delete',
-  LIST = 'list',
-  GET = 'get',
-  WRITE = 'write',
-}
-
-interface FirestoreErrorInfo {
-  error: string;
-  operationType: OperationType;
-  path: string | null;
-  authInfo: {
-    userId: string | undefined;
-    email: string | null | undefined;
-    emailVerified: boolean | undefined;
-    isAnonymous: boolean | undefined;
-    tenantId: string | null | undefined;
-    providerInfo: {
-      providerId: string;
-      displayName: string | null;
-      email: string | null;
-      photoUrl: string | null;
-    }[];
-  }
-}
-
-function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
-  const errInfo: FirestoreErrorInfo = {
-    error: error instanceof Error ? error.message : String(error),
-    authInfo: {
-      userId: auth.currentUser?.uid,
-      email: auth.currentUser?.email,
-      emailVerified: auth.currentUser?.emailVerified,
-      isAnonymous: auth.currentUser?.isAnonymous,
-      tenantId: auth.currentUser?.tenantId,
-      providerInfo: auth.currentUser?.providerData.map(provider => ({
-        providerId: provider.providerId,
-        displayName: provider.displayName,
-        email: provider.email,
-        photoUrl: provider.photoURL
-      })) || []
-    },
-    operationType,
-    path
-  }
-  console.error('Firestore Error: ', JSON.stringify(errInfo));
-  throw new Error(JSON.stringify(errInfo));
-}
-
 export default function Dashboard() {
   const { user, userProfile, isGuest, logout } = useAuth();
   const navigate = useNavigate();
@@ -92,7 +42,7 @@ export default function Dashboard() {
   const [isGeneratingQuickPrompt, setIsGeneratingQuickPrompt] = useState(false);
   const [activeTab, setActiveTab] = useState('trends'); // For mobile/tablet view
   const [direction, setDirection] = useState(0);
-  const [selectedApiKey, setSelectedApiKey] = useState<string | undefined>(undefined);
+  const [selectedApiKey, setSelectedApiKey] = useState<string>("default");
 
   // Set default API key if user has one
   useEffect(() => {
@@ -105,9 +55,9 @@ export default function Dashboard() {
           console.log(`Switching to working custom API: ${workingApi.platform}`);
           setSelectedApiKey(workingApi.apiKey);
         }
-      } else if (selectedApiKey !== undefined) {
+      } else if (selectedApiKey !== "default") {
         console.log("No working custom API found, switching to default.");
-        setSelectedApiKey(undefined);
+        setSelectedApiKey("default");
       }
     }
   }, [userProfile?.settings?.customApis, selectedApiKey]);
@@ -128,7 +78,8 @@ export default function Dashboard() {
     
     setIsGeneratingQuickPrompt(true);
     try {
-      const result = await generateQuickPrompt(quickPromptInput, selectedApiKey);
+      const apiKeyToUse = selectedApiKey === "default" ? undefined : selectedApiKey;
+      const result = await generateQuickPrompt(quickPromptInput, apiKeyToUse);
       setQuickPromptResult(result);
     } catch (error) {
       console.error(error);
@@ -195,7 +146,8 @@ export default function Dashboard() {
       if (!response.ok) throw new Error('Failed to fetch media');
       
       const { media } = await response.json();
-      const personalizedNiches = await getPersonalizedNiches(media, selectedApiKey);
+      const apiKeyToUse = selectedApiKey === "default" ? undefined : selectedApiKey;
+      const personalizedNiches = await getPersonalizedNiches(media, apiKeyToUse);
       
       if (personalizedNiches.length > 0) {
         setNiches(personalizedNiches);
@@ -216,7 +168,8 @@ export default function Dashboard() {
   const fetchGeneralNiches = async () => {
     setLoading(true);
     try {
-      const data = await getTrendingNiches(selectedApiKey);
+      const apiKeyToUse = selectedApiKey === "default" ? undefined : selectedApiKey;
+      const data = await getTrendingNiches(apiKeyToUse);
       setNiches(data);
     } catch (error) {
       toast.error('Failed to load trending niches');
@@ -299,8 +252,10 @@ export default function Dashboard() {
 
   const handleGenerateScript = async (niche: TrendingNiche) => {
     setGenerating(niche.id);
+    setActiveScript(null);
     try {
-      const script = await generateViralScript(niche.name, niche.platform, selectedApiKey);
+      const apiKeyToUse = selectedApiKey === "default" ? undefined : selectedApiKey;
+      const script = await generateViralScript(niche.name, niche.platform, apiKeyToUse);
       setActiveScript(script);
       toast.success('Script generated! Review and save it to your library.');
     } catch (error) {
@@ -317,8 +272,9 @@ export default function Dashboard() {
     }
 
     try {
+      const { id, ...scriptData } = script;
       await addDoc(collection(db, 'scripts'), {
-        ...script,
+        ...scriptData,
         authorId: user.uid,
         createdAt: serverTimestamp(),
       });
@@ -467,7 +423,7 @@ export default function Dashboard() {
                       </div>
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value={undefined as any}>
+                      <SelectItem value="default">
                         Default (System)
                       </SelectItem>
                       {userProfile.settings.customApis.map((api) => (
@@ -726,162 +682,184 @@ export default function Dashboard() {
                                     className="flex-1 h-12 rounded-2xl font-bold shadow-lg shadow-primary/20 active:scale-95 transition-all" 
                                     onClick={() => handleGenerateScript(niche)}
                                     disabled={generating === niche.id}
-                                  >
-                                    {generating === niche.id ? (
-                                      <Loader2 className="w-5 h-5 animate-spin" />
-                                    ) : (
-                                      <>
-                                        <Sparkles className="w-4 h-4 mr-2" />
-                                        Craft Script
-                                      </>
-                                    )}
-                                  </Button>
-                                } />
-                              {activeScript && generating !== niche.id && (
+                                  />
+                                }>
+                                  {generating === niche.id ? (
+                                    <Loader2 className="w-5 h-5 animate-spin" />
+                                  ) : (
+                                    <>
+                                      <Sparkles className="w-4 h-4 mr-2" />
+                                      Craft Script
+                                    </>
+                                  )}
+                                </DialogTrigger>
                                 <DialogContent className="max-w-3xl max-h-[90vh] flex flex-col rounded-3xl p-0 overflow-hidden border-none shadow-2xl">
-                                  <div className="bg-gradient-to-r from-primary/10 to-primary/5 p-6 border-b flex items-center justify-between">
-                                    <DialogHeader className="text-left">
-                                      <DialogTitle className="text-2xl font-black flex items-center">
-                                        <Sparkles className="w-6 h-6 mr-3 text-yellow-500" />
-                                        Viral Blueprint
-                                      </DialogTitle>
-                                      <DialogDescription className="text-base font-medium">
-                                        Optimized for {activeScript.platform} • {activeScript.niche}
-                                      </DialogDescription>
-                                    </DialogHeader>
-                                    
-                                    {!isGuest && (
-                                      (activeScript as any).id ? (
-                                        <Button 
-                                          variant="ghost" 
-                                          size="sm" 
-                                          className="rounded-xl font-bold text-destructive hover:bg-destructive/10 hover:text-destructive"
-                                          onClick={() => handleDeleteScript((activeScript as any).id)}
-                                        >
-                                          <Trash2 className="w-4 h-4 mr-2" />
-                                          Delete
-                                        </Button>
-                                      ) : (
-                                        !savedScripts.some(s => s.content === activeScript.content) && (
-                                          <Button 
-                                            variant="outline" 
-                                            size="sm" 
-                                            className="rounded-xl font-bold border-primary/20 hover:bg-primary hover:text-primary-foreground"
-                                            onClick={() => handleSaveScript(activeScript)}
-                                          >
-                                            <Bookmark className="w-4 h-4 mr-2" />
-                                            Save
-                                          </Button>
-                                        )
-                                      )
-                                    )}
-                                  </div>
-                                  
-                                  <Tabs defaultValue="script" className="flex-grow flex flex-col overflow-hidden">
-                                    <div className="px-6 pt-4 bg-muted/30">
-                                      <TabsList className="grid w-full grid-cols-5 h-12 bg-background/50 p-1 rounded-xl">
-                                        <TabsTrigger value="script" className="rounded-lg"><FileText className="w-4 h-4"/></TabsTrigger>
-                                        <TabsTrigger value="image" className="rounded-lg"><Sparkles className="w-4 h-4"/></TabsTrigger>
-                                        <TabsTrigger value="tags" className="rounded-lg"><Hash className="w-4 h-4"/></TabsTrigger>
-                                        <TabsTrigger value="tools" className="rounded-lg"><Wrench className="w-4 h-4"/></TabsTrigger>
-                                        <TabsTrigger value="watermark" className="rounded-lg"><Scissors className="w-4 h-4"/></TabsTrigger>
-                                      </TabsList>
+                                  {generating === niche.id ? (
+                                    <div className="flex flex-col items-center justify-center p-12 space-y-4 h-64">
+                                      <Loader2 className="w-12 h-12 animate-spin text-primary" />
+                                      <p className="text-lg font-medium">Crafting your viral blueprint...</p>
                                     </div>
-                                    
-                                    <ScrollArea className="flex-grow p-6">
-                                      <TabsContent value="script" className="m-0 space-y-6">
-                                        <div className="bg-card p-6 rounded-2xl border shadow-inner font-mono text-sm leading-relaxed whitespace-pre-wrap">
-                                          {activeScript.content}
-                                        </div>
-                                        <Button 
-                                          className="w-full h-12 rounded-xl font-bold"
-                                          onClick={() => {
-                                            navigator.clipboard.writeText(activeScript.content);
-                                            toast.success('Script copied!');
-                                          }}
-                                        >
-                                          Copy Full Script
-                                        </Button>
-                                      </TabsContent>
-
-                                      <TabsContent value="image" className="m-0 space-y-6">
-                                        <div className="bg-yellow-500/5 border-2 border-dashed border-yellow-500/20 p-6 rounded-2xl">
-                                          <h4 className="text-xs font-black uppercase tracking-widest text-yellow-600 dark:text-yellow-400 mb-4">AI Visual Prompt</h4>
-                                          <p className="text-base italic leading-relaxed font-serif">
-                                            {activeScript.imagePrompt}
-                                          </p>
-                                        </div>
-                                        <Button 
-                                          className="w-full h-12 rounded-xl font-bold bg-yellow-500 hover:bg-yellow-600 text-black"
-                                          onClick={() => {
-                                            navigator.clipboard.writeText(activeScript.imagePrompt);
-                                            toast.success('Prompt copied!');
-                                          }}
-                                        >
-                                          Copy Visual Prompt
-                                        </Button>
-                                      </TabsContent>
-                                      
-                                      <TabsContent value="tags" className="m-0 space-y-6">
-                                        <div className="flex flex-wrap gap-2">
-                                          {activeScript.tags.map((tag, i) => (
-                                            <span key={i} className="bg-primary/10 text-primary px-4 py-2 rounded-xl text-sm font-bold border border-primary/10">
-                                              {tag.startsWith('#') ? tag : `#${tag}`}
-                                            </span>
-                                          ))}
-                                        </div>
-                                      </TabsContent>
-                                      
-                                      <TabsContent value="tools" className="m-0 space-y-4">
-                                        {Array.isArray(activeScript.tools) && activeScript.tools.map((tool: any, i) => {
-                                          const formatUrl = (rawUrl: string) => {
-                                            if (!rawUrl) return '#';
-                                            let url = rawUrl.trim();
-                                            if (url.startsWith('//')) url = 'https:' + url;
-                                            if (!url.startsWith('http')) url = 'https://' + url;
-                                            return url;
-                                          };
-                                          const toolUrl = formatUrl(tool.url);
-                                          return (
-                                            <div key={i} className="p-4 bg-card rounded-2xl border flex items-center justify-between group">
-                                              <div className="flex items-center">
-                                                <div className="bg-primary/10 p-2.5 rounded-xl mr-4 group-hover:scale-110 transition-transform">
-                                                  <Wrench className="w-5 h-5 text-primary" />
-                                                </div>
-                                                <div>
-                                                  <p className="font-bold text-sm">{typeof tool === 'string' ? tool : tool.name}</p>
-                                                  {tool.description && <p className="text-xs text-muted-foreground">{tool.description}</p>}
-                                                </div>
-                                              </div>
-                                              {tool.url && (
-                                                <a 
-                                                  href={toolUrl} 
-                                                  target="_blank" 
-                                                  rel="noopener noreferrer"
-                                                  className={cn(buttonVariants({ variant: "ghost", size: "icon" }), "h-12 w-12 rounded-2xl shrink-0 border-border/50 cursor-pointer")}
-                                                  onClick={(e) => e.stopPropagation()}
-                                                >
-                                                  <ExternalLink className="w-4 h-4" />
-                                                </a>
-                                              )}
-                                            </div>
+                                  ) : activeScript ? (
+                                    <>
+                                      <div className="bg-gradient-to-r from-primary/10 to-primary/5 p-6 border-b flex items-center justify-between">
+                                        <DialogHeader className="text-left">
+                                          <DialogTitle className="text-2xl font-black flex items-center">
+                                            <Sparkles className="w-6 h-6 mr-3 text-yellow-500" />
+                                            Viral Blueprint
+                                          </DialogTitle>
+                                          <DialogDescription className="text-base font-medium">
+                                            Optimized for {activeScript.platform} • {activeScript.niche}
+                                          </DialogDescription>
+                                        </DialogHeader>
+                                        
+                                        {!isGuest && (() => {
+                                          const savedScriptMatch = savedScripts.find(s => s.content === activeScript.content);
+                                          const scriptId = (activeScript as any).id || savedScriptMatch?.id;
+                                          
+                                          return scriptId ? (
+                                            <Button 
+                                              variant="ghost" 
+                                              size="sm" 
+                                              className="rounded-xl font-bold text-destructive hover:bg-destructive/10 hover:text-destructive"
+                                              onClick={() => handleDeleteScript(scriptId)}
+                                            >
+                                              <Trash2 className="w-4 h-4 mr-2" />
+                                              Delete
+                                            </Button>
+                                          ) : (
+                                            <Button 
+                                              variant="outline" 
+                                              size="sm" 
+                                              className="rounded-xl font-bold border-primary/20 hover:bg-primary hover:text-primary-foreground"
+                                              onClick={() => handleSaveScript(activeScript)}
+                                            >
+                                              <Bookmark className="w-4 h-4 mr-2" />
+                                              Save
+                                            </Button>
                                           );
-                                        })}
-                                      </TabsContent>
-
-                                      <TabsContent value="watermark" className="m-0">
-                                        <div className="bg-blue-500/5 border border-blue-500/20 p-6 rounded-2xl flex items-start">
-                                          <Scissors className="w-6 h-6 text-blue-500 mr-4 shrink-0" />
-                                          <p className="text-sm leading-relaxed text-blue-700 dark:text-blue-300">
-                                            {activeScript.watermarkTips}
-                                          </p>
+                                        })()}
+                                      </div>
+                                      
+                                      <Tabs defaultValue="script" className="flex-grow flex flex-col overflow-hidden">
+                                        <div className="px-6 pt-4 bg-muted/30">
+                                          <TabsList className="grid w-full grid-cols-5 h-12 bg-background/50 p-1 rounded-xl">
+                                            <TabsTrigger value="script" className="rounded-lg"><FileText className="w-4 h-4"/></TabsTrigger>
+                                            <TabsTrigger value="image" className="rounded-lg"><Sparkles className="w-4 h-4"/></TabsTrigger>
+                                            <TabsTrigger value="tags" className="rounded-lg"><Hash className="w-4 h-4"/></TabsTrigger>
+                                            <TabsTrigger value="tools" className="rounded-lg"><Wrench className="w-4 h-4"/></TabsTrigger>
+                                            <TabsTrigger value="watermark" className="rounded-lg"><Scissors className="w-4 h-4"/></TabsTrigger>
+                                          </TabsList>
                                         </div>
-                                      </TabsContent>
-                                    </ScrollArea>
-                                  </Tabs>
+                                        
+                                        <ScrollArea className="flex-1 p-6">
+                                          <TabsContent value="script" className="m-0 space-y-6">
+                                            <div className="bg-card p-6 rounded-2xl border shadow-inner font-mono text-sm leading-relaxed whitespace-pre-wrap">
+                                              {activeScript.content}
+                                            </div>
+                                            <Button 
+                                              className="w-full h-12 rounded-xl font-bold"
+                                              onClick={() => {
+                                                navigator.clipboard.writeText(activeScript.content);
+                                                toast.success('Script copied!');
+                                              }}
+                                            >
+                                              Copy Full Script
+                                            </Button>
+                                          </TabsContent>
+
+                                          <TabsContent value="image" className="m-0 space-y-6">
+                                            <div className="bg-yellow-500/5 border-2 border-dashed border-yellow-500/20 p-6 rounded-2xl">
+                                              <h4 className="text-xs font-black uppercase tracking-widest text-yellow-600 dark:text-yellow-400 mb-4">AI Visual Prompt</h4>
+                                              <p className="text-base italic leading-relaxed font-serif">
+                                                {activeScript.imagePrompt}
+                                              </p>
+                                            </div>
+                                            <Button 
+                                              className="w-full h-12 rounded-xl font-bold bg-yellow-500 hover:bg-yellow-600 text-black"
+                                              onClick={() => {
+                                                navigator.clipboard.writeText(activeScript.imagePrompt);
+                                                toast.success('Prompt copied!');
+                                              }}
+                                            >
+                                              Copy Visual Prompt
+                                            </Button>
+                                          </TabsContent>
+                                          
+                                          <TabsContent value="tags" className="m-0 space-y-6">
+                                            <div className="flex flex-wrap gap-2">
+                                              {activeScript.tags.map((tag, i) => (
+                                                <span key={i} className="bg-primary/10 text-primary px-4 py-2 rounded-xl text-sm font-bold border border-primary/10">
+                                                  {tag.startsWith('#') ? tag : `#${tag}`}
+                                                </span>
+                                              ))}
+                                            </div>
+                                          </TabsContent>
+                                          
+                                          <TabsContent value="tools" className="m-0 space-y-4">
+                                            {Array.isArray(activeScript.tools) && activeScript.tools.map((tool: any, i) => {
+                                              const formatUrl = (rawUrl: string) => {
+                                                if (!rawUrl) return '#';
+                                                let url = rawUrl.trim();
+                                                if (url.startsWith('//')) url = 'https:' + url;
+                                                if (!url.startsWith('http')) url = 'https://' + url;
+                                                return url;
+                                              };
+                                              const toolUrl = formatUrl(tool.url);
+                                              return (
+                                                <div key={i} className="p-4 bg-card rounded-2xl border flex items-center justify-between group">
+                                                  <div className="flex items-center">
+                                                    <div className="bg-primary/10 p-2.5 rounded-xl mr-4 group-hover:scale-110 transition-transform">
+                                                      <Wrench className="w-5 h-5 text-primary" />
+                                                    </div>
+                                                    <div>
+                                                      <div className="flex items-center gap-2">
+                                                        <p className="font-bold text-sm">{typeof tool === 'string' ? tool : tool.name}</p>
+                                                        {tool.type && (
+                                                          <span className={cn(
+                                                            "text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full font-bold",
+                                                            tool.type.toLowerCase() === 'free' ? "bg-green-500/10 text-green-500" : "bg-purple-500/10 text-purple-500"
+                                                          )}>
+                                                            {tool.type}
+                                                          </span>
+                                                        )}
+                                                      </div>
+                                                      {tool.description && <p className="text-xs text-muted-foreground">{tool.description}</p>}
+                                                    </div>
+                                                  </div>
+                                                  {tool.url && (
+                                                    <a 
+                                                      href={toolUrl} 
+                                                      target="_blank" 
+                                                      rel="noopener noreferrer"
+                                                      className={cn(buttonVariants({ variant: "ghost", size: "icon" }), "h-12 w-12 rounded-2xl shrink-0 border-border/50 cursor-pointer")}
+                                                      onClick={(e) => e.stopPropagation()}
+                                                    >
+                                                      <ExternalLink className="w-4 h-4" />
+                                                    </a>
+                                                  )}
+                                                </div>
+                                              );
+                                            })}
+                                          </TabsContent>
+
+                                          <TabsContent value="watermark" className="m-0">
+                                            <div className="bg-blue-500/5 border border-blue-500/20 p-6 rounded-2xl flex items-start">
+                                              <Scissors className="w-6 h-6 text-blue-500 mr-4 shrink-0" />
+                                              <p className="text-sm leading-relaxed text-blue-700 dark:text-blue-300">
+                                                {activeScript.watermarkTips}
+                                              </p>
+                                            </div>
+                                          </TabsContent>
+                                        </ScrollArea>
+                                      </Tabs>
+                                    </>
+                                  ) : (
+                                    <div className="flex flex-col items-center justify-center p-12 space-y-4 h-64">
+                                      <p className="text-lg font-medium text-muted-foreground">Script generation failed or was cancelled.</p>
+                                    </div>
+                                  )}
                                 </DialogContent>
-                              )}
-                            </Dialog>
+                              </Dialog>
 
                             {!isGuest && (
                               <DropdownMenu>
@@ -920,7 +898,7 @@ export default function Dashboard() {
                       </div>
                       <h3 className="text-xl font-bold">No niches found</h3>
                       <p className="text-muted-foreground text-center max-w-sm mt-3 px-6">
-                        {selectedApiKey 
+                        {selectedApiKey !== "default"
                           ? "We couldn't find any trending niches with your custom API key. Please verify your key is active and has billing enabled in the provider's console (Google AI Studio or Groq)."
                           : "We couldn't find any trending niches matching your criteria. Try adjusting your filters or refreshing."}
                       </p>
@@ -1056,9 +1034,143 @@ export default function Dashboard() {
                             </p>
                           </CardContent>
                           <CardFooter className="gap-3">
-                            <Button variant="outline" className="flex-grow rounded-xl h-10 text-xs font-bold" onClick={() => setActiveScript(script)}>
-                              View Full Blueprint
-                            </Button>
+                            <Dialog>
+                              <DialogTrigger render={
+                                <Button variant="outline" className="flex-grow rounded-xl h-10 text-xs font-bold" onClick={() => setActiveScript(script)} />
+                              }>
+                                View Full Blueprint
+                              </DialogTrigger>
+                              <DialogContent className="max-w-3xl max-h-[90vh] flex flex-col rounded-3xl p-0 overflow-hidden border-none shadow-2xl">
+                                {activeScript && activeScript.id === script.id && (
+                                  <>
+                                    <div className="bg-gradient-to-r from-primary/10 to-primary/5 p-6 border-b flex items-center justify-between">
+                                      <DialogHeader className="text-left">
+                                        <DialogTitle className="text-2xl font-black flex items-center">
+                                          <Sparkles className="w-6 h-6 mr-3 text-yellow-500" />
+                                          Viral Blueprint
+                                        </DialogTitle>
+                                        <DialogDescription className="text-base font-medium">
+                                          Optimized for {activeScript.platform} • {activeScript.niche}
+                                        </DialogDescription>
+                                      </DialogHeader>
+                                      
+                                      <Button 
+                                        variant="ghost" 
+                                        size="sm" 
+                                        className="rounded-xl font-bold text-destructive hover:bg-destructive/10 hover:text-destructive"
+                                        onClick={() => handleDeleteScript(script.id)}
+                                      >
+                                        <Trash2 className="w-4 h-4 mr-2" />
+                                        Delete
+                                      </Button>
+                                    </div>
+                                    
+                                    <Tabs defaultValue="script" className="flex-grow flex flex-col overflow-hidden">
+                                      <div className="px-6 pt-4 bg-muted/30">
+                                        <TabsList className="grid w-full grid-cols-5 h-12 bg-background/50 p-1 rounded-xl">
+                                          <TabsTrigger value="script" className="rounded-lg"><FileText className="w-4 h-4"/></TabsTrigger>
+                                          <TabsTrigger value="image" className="rounded-lg"><Sparkles className="w-4 h-4"/></TabsTrigger>
+                                          <TabsTrigger value="tags" className="rounded-lg"><Hash className="w-4 h-4"/></TabsTrigger>
+                                          <TabsTrigger value="tools" className="rounded-lg"><Wrench className="w-4 h-4"/></TabsTrigger>
+                                          <TabsTrigger value="watermark" className="rounded-lg"><Scissors className="w-4 h-4"/></TabsTrigger>
+                                        </TabsList>
+                                      </div>
+                                      
+                                      <div className="flex-grow overflow-y-auto p-6">
+                                        <TabsContent value="script" className="m-0 space-y-6">
+                                          <div className="bg-card p-6 rounded-2xl border shadow-inner font-mono text-sm leading-relaxed whitespace-pre-wrap">
+                                            {activeScript.content}
+                                          </div>
+                                          <Button 
+                                            className="w-full h-12 rounded-xl font-bold"
+                                            onClick={() => {
+                                              navigator.clipboard.writeText(activeScript.content);
+                                              toast.success('Script copied!');
+                                            }}
+                                          >
+                                            Copy Full Script
+                                          </Button>
+                                        </TabsContent>
+
+                                        <TabsContent value="image" className="m-0 space-y-6">
+                                          <div className="bg-yellow-500/5 border-2 border-dashed border-yellow-500/20 p-6 rounded-2xl">
+                                            <h4 className="text-xs font-black uppercase tracking-widest text-yellow-600 dark:text-yellow-400 mb-4">AI Visual Prompt</h4>
+                                            <p className="text-base italic leading-relaxed font-serif">
+                                              {activeScript.imagePrompt}
+                                            </p>
+                                          </div>
+                                          <Button 
+                                            className="w-full h-12 rounded-xl font-bold bg-yellow-500 hover:bg-yellow-600 text-black"
+                                            onClick={() => {
+                                              navigator.clipboard.writeText(activeScript.imagePrompt);
+                                              toast.success('Prompt copied!');
+                                            }}
+                                          >
+                                            Copy Visual Prompt
+                                          </Button>
+                                        </TabsContent>
+                                        
+                                        <TabsContent value="tags" className="m-0 space-y-6">
+                                          <div className="flex flex-wrap gap-2">
+                                            {activeScript.tags.map((tag, i) => (
+                                              <span key={i} className="bg-primary/10 text-primary px-4 py-2 rounded-xl text-sm font-bold border border-primary/10">
+                                                {tag.startsWith('#') ? tag : `#${tag}`}
+                                              </span>
+                                            ))}
+                                          </div>
+                                        </TabsContent>
+                                        
+                                        <TabsContent value="tools" className="m-0 space-y-4">
+                                          {Array.isArray(activeScript.tools) && activeScript.tools.map((tool: any, i) => {
+                                            const formatUrl = (rawUrl: string) => {
+                                              if (!rawUrl) return '#';
+                                              let url = rawUrl.trim();
+                                              if (url.startsWith('//')) url = 'https:' + url;
+                                              if (!url.startsWith('http')) url = 'https://' + url;
+                                              return url;
+                                            };
+                                            const toolUrl = formatUrl(tool.url);
+                                            return (
+                                              <div key={i} className="p-4 bg-card rounded-2xl border flex items-center justify-between group">
+                                                <div className="flex items-center">
+                                                  <div className="bg-primary/10 p-2.5 rounded-xl mr-4 group-hover:scale-110 transition-transform">
+                                                    <Wrench className="w-5 h-5 text-primary" />
+                                                  </div>
+                                                  <div>
+                                                    <p className="font-bold text-sm">{typeof tool === 'string' ? tool : tool.name}</p>
+                                                    {tool.description && <p className="text-xs text-muted-foreground">{tool.description}</p>}
+                                                  </div>
+                                                </div>
+                                                {tool.url && (
+                                                  <a 
+                                                    href={toolUrl} 
+                                                    target="_blank" 
+                                                    rel="noopener noreferrer"
+                                                    className={cn(buttonVariants({ variant: "ghost", size: "icon" }), "h-12 w-12 rounded-2xl shrink-0 border-border/50 cursor-pointer")}
+                                                    onClick={(e) => e.stopPropagation()}
+                                                  >
+                                                    <ExternalLink className="w-4 h-4" />
+                                                  </a>
+                                                )}
+                                              </div>
+                                            );
+                                          })}
+                                        </TabsContent>
+
+                                        <TabsContent value="watermark" className="m-0">
+                                          <div className="bg-blue-500/5 border border-blue-500/20 p-6 rounded-2xl flex items-start">
+                                            <Scissors className="w-6 h-6 text-blue-500 mr-4 shrink-0" />
+                                            <p className="text-sm leading-relaxed text-blue-700 dark:text-blue-300">
+                                              {activeScript.watermarkTips}
+                                            </p>
+                                          </div>
+                                        </TabsContent>
+                                      </div>
+                                    </Tabs>
+                                  </>
+                                )}
+                              </DialogContent>
+                            </Dialog>
                             <Button 
                               variant="ghost" 
                               size="icon" 
@@ -1114,7 +1226,7 @@ export default function Dashboard() {
                                 <SelectValue placeholder="Select Engine" />
                               </SelectTrigger>
                               <SelectContent>
-                                <SelectItem value={undefined as any}>Default</SelectItem>
+                                <SelectItem value="default">Default</SelectItem>
                                 {userProfile.settings.customApis.map((api) => (
                                   <SelectItem key={api.id} value={api.apiKey} disabled={api.status === 'failed'}>
                                     {api.platform}

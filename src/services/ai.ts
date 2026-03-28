@@ -14,6 +14,13 @@ const defaultAi = getAiInstance();
 
 const isGroqKey = (key: string) => key.startsWith('gsk_');
 
+const getGroqApiKey = (customKey?: string) => {
+  if (customKey && isGroqKey(customKey)) return customKey;
+  const envKey = (process.env as any).GROQ_API_KEY;
+  if (envKey && isGroqKey(envKey)) return envKey;
+  return null;
+};
+
 export interface TrendingNiche {
   id: string;
   name: string;
@@ -30,6 +37,7 @@ export interface TrendingNiche {
 }
 
 export interface ViralScript {
+  id?: string;
   niche: string;
   platform: string;
   content: string;
@@ -46,20 +54,26 @@ export interface ViralScript {
 
 async function callGroq(apiKey: string, prompt: string, responseSchema?: any): Promise<string> {
   const groq = new Groq({ apiKey, dangerouslyAllowBrowser: true });
+  
+  const messages: any[] = [
+    {
+      role: "system",
+      content: responseSchema 
+        ? "You are a world-class social media strategist. Return only valid JSON." 
+        : "You are a world-class social media strategist."
+    },
+    {
+      role: "user",
+      content: prompt + (responseSchema ? `\n\nReturn the response in this exact JSON format: ${JSON.stringify(responseSchema)}` : "")
+    }
+  ];
+
   const completion = await groq.chat.completions.create({
-    messages: [
-      {
-        role: "system",
-        content: "You are a world-class social media strategist. Return only valid JSON."
-      },
-      {
-        role: "user",
-        content: prompt + (responseSchema ? `\n\nReturn the response in this JSON format: ${JSON.stringify(responseSchema)}` : "")
-      }
-    ],
+    messages,
     model: "llama-3.3-70b-versatile",
-    response_format: { type: "json_object" }
+    ...(responseSchema ? { response_format: { type: "json_object" } } : {})
   });
+  
   return completion.choices[0]?.message?.content || "";
 }
 
@@ -80,10 +94,8 @@ export async function getTrendingNiches(customApiKey?: string): Promise<Trending
   `;
 
   const schema = {
-    type: "array",
-    items: {
-      type: "object",
-      properties: {
+    niches: [
+      {
         id: "string",
         name: "string",
         platform: "instagram | youtube | both",
@@ -95,14 +107,15 @@ export async function getTrendingNiches(customApiKey?: string): Promise<Trending
           { title: "string", description: "string", url: "string" }
         ]
       }
-    }
+    ]
   };
 
   try {
-    if (customApiKey && isGroqKey(customApiKey)) {
+    const groqKey = getGroqApiKey(customApiKey);
+    if (groqKey) {
       console.log("Fetching trending niches using Groq...");
       try {
-        const text = await callGroq(customApiKey, prompt, schema);
+        const text = await callGroq(groqKey, prompt, schema);
         console.log("Groq Raw Response:", text);
         const parsed = JSON.parse(text);
         
@@ -184,8 +197,9 @@ export async function getTrendingNiches(customApiKey?: string): Promise<Trending
 
 export async function validateApiKey(apiKey: string): Promise<boolean> {
   try {
-    if (isGroqKey(apiKey)) {
-      const groq = new Groq({ apiKey, dangerouslyAllowBrowser: true });
+    const groqKey = getGroqApiKey(apiKey);
+    if (groqKey) {
+      const groq = new Groq({ apiKey: groqKey, dangerouslyAllowBrowser: true });
       const completion = await groq.chat.completions.create({
         messages: [{ role: "user", content: "hi" }],
         model: "llama-3.3-70b-versatile",
@@ -228,10 +242,8 @@ export async function getPersonalizedNiches(mediaData: any[], customApiKey?: str
   `;
 
   const schema = {
-    type: "array",
-    items: {
-      type: "object",
-      properties: {
+    niches: [
+      {
         id: "string",
         name: "string",
         platform: "instagram | youtube | both",
@@ -243,13 +255,14 @@ export async function getPersonalizedNiches(mediaData: any[], customApiKey?: str
           { title: "string", description: "string", url: "string" }
         ]
       }
-    }
+    ]
   };
 
   try {
-    if (customApiKey && isGroqKey(customApiKey)) {
+    const groqKey = getGroqApiKey(customApiKey);
+    if (groqKey) {
       console.log("Fetching personalized niches using Groq...");
-      const text = await callGroq(customApiKey, prompt, schema);
+      const text = await callGroq(groqKey, prompt, schema);
       console.log("Groq Personalized Raw Response:", text);
       const parsed = JSON.parse(text);
       
@@ -321,9 +334,10 @@ export async function generateQuickPrompt(theme: string, customApiKey?: string):
   const prompt = `Generate a high-quality, cinematic image generation prompt for an AI tool (like Midjourney or DALL-E 3) based on this theme: "${theme}". The prompt should be detailed, descriptive, and optimized for viral video thumbnails.`;
 
   try {
-    if (customApiKey && isGroqKey(customApiKey)) {
+    const groqKey = getGroqApiKey(customApiKey);
+    if (groqKey) {
       console.log("Generating quick prompt using Groq...");
-      return await callGroq(customApiKey, prompt);
+      return await callGroq(groqKey, prompt);
     }
 
     const aiInstance = customApiKey ? new GoogleGenAI({ apiKey: customApiKey }) : defaultAi;
@@ -368,9 +382,10 @@ export async function generateViralScript(niche: string, platform: string, custo
   };
 
   try {
-    if (customApiKey && isGroqKey(customApiKey)) {
+    const groqKey = getGroqApiKey(customApiKey);
+    if (groqKey) {
       console.log("Generating viral script using Groq...");
-      const text = await callGroq(customApiKey, prompt, schema);
+      const text = await callGroq(groqKey, prompt, schema);
       return JSON.parse(text);
     }
 
