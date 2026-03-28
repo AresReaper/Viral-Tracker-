@@ -1,6 +1,15 @@
 import { GoogleGenAI, Type } from '@google/genai';
 
-const defaultAi = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+const getAiInstance = (apiKey?: string) => {
+  const key = apiKey || (process.env as any).GEMINI_API_KEY;
+  if (!key) {
+    console.warn('GEMINI_API_KEY is missing. AI features will not work.');
+    return null;
+  }
+  return new GoogleGenAI({ apiKey: key });
+};
+
+const defaultAi = getAiInstance();
 
 export interface TrendingNiche {
   id: string;
@@ -34,6 +43,10 @@ export interface ViralScript {
 
 export async function getTrendingNiches(customApiKey?: string): Promise<TrendingNiche[]> {
   const aiInstance = customApiKey ? new GoogleGenAI({ apiKey: customApiKey }) : defaultAi;
+  if (!aiInstance) {
+    console.error("AI instance not initialized. Check your API key.");
+    return [];
+  }
   const prompt = `
     Act as a world-class social media strategist and trend analyst. 
     Analyze the current digital landscape across Instagram Reels and YouTube Shorts to identify the top 6 high-growth, viral-potential niches.
@@ -105,6 +118,10 @@ export async function getTrendingNiches(customApiKey?: string): Promise<Trending
 
 export async function getPersonalizedNiches(mediaData: any[], customApiKey?: string): Promise<TrendingNiche[]> {
   const aiInstance = customApiKey ? new GoogleGenAI({ apiKey: customApiKey }) : defaultAi;
+  if (!aiInstance) {
+    console.error("AI instance not initialized. Check your API key.");
+    return [];
+  }
   const mediaDescriptions = mediaData.slice(0, 10).map(m => m.caption || 'No caption').join(' | ');
   
   const prompt = `
@@ -175,6 +192,10 @@ export async function getPersonalizedNiches(mediaData: any[], customApiKey?: str
 
 export async function generateViralScript(niche: string, platform: string, customApiKey?: string): Promise<ViralScript> {
   const aiInstance = customApiKey ? new GoogleGenAI({ apiKey: customApiKey }) : defaultAi;
+  if (!aiInstance) {
+    console.error("AI instance not initialized. Check your API key.");
+    throw new Error("AI instance not initialized. Check your API key.");
+  }
   const prompt = `
     Generate a high-conversion, viral-engineered video blueprint for the "${niche}" niche on ${platform}.
     

@@ -402,13 +402,13 @@ export default function Dashboard() {
                   variant="default" 
                   size="sm" 
                   onClick={() => setShowIgDialog(true)} 
-                  className="font-black rounded-xl shadow-lg shadow-primary/20 bg-gradient-to-r from-primary to-primary/80 hover:scale-105 transition-all px-5 relative"
+                  className="font-black rounded-xl shadow-lg shadow-primary/20 bg-gradient-to-r from-primary to-primary/80 hover:scale-105 transition-all px-5 flex flex-col items-center justify-center h-10"
                 >
-                  <Instagram className="w-4 h-4 mr-2" />
-                  Connect IG
-                  <span className="absolute -top-2 -right-2 bg-primary text-primary-foreground text-[10px] font-bold px-1.5 py-0.5 rounded-full border border-background">
-                    BETA
-                  </span>
+                  <span className="text-[8px] bg-primary/20 text-primary px-1.5 rounded-full mb-0.5">BETA</span>
+                  <div className="flex items-center">
+                    <Instagram className="w-4 h-4 mr-2" />
+                    Connect IG
+                  </div>
                 </Button>
               )
             )}

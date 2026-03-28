@@ -54,6 +54,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setIsGuest(true);
     }
 
+    if (!auth || !db) {
+      console.error('Auth or DB not initialized. Check your Firebase configuration.');
+      setLoading(false);
+      return;
+    }
+
     const unsubscribeAuth = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
       
