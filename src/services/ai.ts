@@ -109,10 +109,31 @@ export async function getTrendingNiches(customApiKey?: string): Promise<Trending
     console.log("Gemini Response received:", response.text);
     const text = response.text || '[]';
     const cleanedText = text.replace(/^```json\n?/, '').replace(/\n?```$/, '').trim();
-    return JSON.parse(cleanedText);
+    const parsed = JSON.parse(cleanedText);
+    if (!Array.isArray(parsed)) {
+      console.error("Expected array from Gemini, got:", typeof parsed);
+      return [];
+    }
+    return parsed;
   } catch (e) {
     console.error("Failed to fetch or parse trending niches", e);
     return [];
+  }
+}
+
+export async function validateApiKey(apiKey: string): Promise<boolean> {
+  try {
+    const ai = new GoogleGenAI({ apiKey });
+    // Simple fast check
+    const response = await ai.models.generateContent({
+      model: 'gemini-3-flash-preview',
+      contents: 'hi',
+      config: { maxOutputTokens: 5 }
+    });
+    return !!response.text;
+  } catch (e) {
+    console.error("API Key validation failed:", e);
+    return false;
   }
 }
 

@@ -63,6 +63,8 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
   throw new Error(JSON.stringify(errInfo));
 }
 
+import { validateApiKey } from '../services/ai';
+
 export function SettingsDialog() {
   const { user, userProfile, isGuest } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
@@ -77,7 +79,7 @@ export function SettingsDialog() {
     if (!user || isGuest) return;
     const newApi = {
       id: Math.random().toString(36).substring(7),
-      platform: '',
+      platform: 'Gemini',
       apiKey: '',
       status: 'untested' as const,
     };
@@ -113,14 +115,22 @@ export function SettingsDialog() {
 
   const testApi = async (id: string) => {
     if (isGuest) return;
+    const apiToTest = customApis.find(a => a.id === id);
+    if (!apiToTest || !apiToTest.apiKey) return;
+
     setTestingId(id);
-    // Simulate testing
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    
+    let success = false;
+    if (apiToTest.platform.toLowerCase().includes('gemini')) {
+      success = await validateApiKey(apiToTest.apiKey);
+    } else {
+      // Simulate testing for other platforms
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      success = Math.random() > 0.3;
+    }
     
     const updatedApis = customApis.map(api => {
       if (api.id === id) {
-        // Randomly succeed or fail for demo purposes
-        const success = Math.random() > 0.3;
         return { ...api, status: success ? 'working' as const : 'failed' as const };
       }
       return api;
@@ -129,11 +139,10 @@ export function SettingsDialog() {
     await updateApis(updatedApis);
     setTestingId(null);
     
-    const api = updatedApis.find(a => a.id === id);
-    if (api?.status === 'working') {
-      toast.success(`${api.platform} API is working correctly!`);
+    if (success) {
+      toast.success(`${apiToTest.platform} API is working correctly!`);
     } else {
-      toast.error(`${api?.platform} API test failed.`);
+      toast.error(`${apiToTest.platform} API test failed. Check your key.`);
     }
   };
 
@@ -163,13 +172,22 @@ export function SettingsDialog() {
   const runDiagnostic = async () => {
     if (isGuest) return;
     setIsDiagnosing(true);
-    toast.info('Starting full diagnostic of niche-finding algorithms and sharing integrations...');
-    await new Promise(resolve => setTimeout(resolve, 3000));
+    toast.info('Starting full diagnostic of niche-finding algorithms and API integrations...');
     
-    const allWorking = customApis.every(api => api.status === 'working');
-    if (allWorking && customApis.length > 0) {
+    const results = await Promise.all(customApis.map(async (api) => {
+      if (api.platform.toLowerCase().includes('gemini')) {
+        const isValid = await validateApiKey(api.apiKey);
+        return { ...api, status: isValid ? 'working' as const : 'failed' as const };
+      }
+      return api;
+    }));
+
+    await updateApis(results);
+    
+    const allWorking = results.every(api => api.status === 'working');
+    if (allWorking && results.length > 0) {
       toast.success('All systems operational! Your custom APIs are correctly integrated.');
-    } else if (customApis.length > 0) {
+    } else if (results.length > 0) {
       toast.warning('Some integrations require attention. Please check failed API tests.');
     } else {
       toast.error('No custom APIs found to diagnose.');

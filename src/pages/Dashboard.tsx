@@ -98,8 +98,10 @@ export default function Dashboard() {
   useEffect(() => {
     if (userProfile?.settings?.customApis) {
       const workingApi = userProfile.settings.customApis.find(api => api.status === 'working');
-      if (workingApi && !selectedApiKey) {
+      if (workingApi && selectedApiKey !== workingApi.apiKey) {
         setSelectedApiKey(workingApi.apiKey);
+      } else if (!workingApi && selectedApiKey) {
+        setSelectedApiKey(undefined);
       }
     }
   }, [userProfile, selectedApiKey]);
@@ -916,7 +918,9 @@ export default function Dashboard() {
                       </div>
                       <h3 className="text-xl font-bold">No niches found</h3>
                       <p className="text-muted-foreground text-center max-w-sm mt-3 px-6">
-                        We couldn't find any trending niches matching your criteria. Try adjusting your filters or refreshing.
+                        {selectedApiKey 
+                          ? "We couldn't find any trending niches with your custom API key. Please verify your key is active and has billing enabled in the Google AI Studio console."
+                          : "We couldn't find any trending niches matching your criteria. Try adjusting your filters or refreshing."}
                       </p>
                       <Button variant="outline" className="mt-8 rounded-2xl px-8 h-12 font-bold" onClick={() => fetchGeneralNiches()}>
                         <RefreshCw className="w-4 h-4 mr-2" />
